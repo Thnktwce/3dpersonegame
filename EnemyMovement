@@ -3,22 +3,87 @@ using UnityEngine.AI;
 
 public class EnemyMovement : MonoBehaviour
 {
+    public Transform targetPlayer;        // Позиция игрока
+    public Transform secondEnemy;         // Позиция второго врага
+    private NavMeshAgent enemyNavMeshAgent; // Агент для навигации
 
-    public Transform player;
-    private NavMeshAgent navMeshAgent;
+    public float avoidanceRadius = 5f;    // Радиус, в котором враг будет избегать других врагов
+    public float distanceToWall = 1.0f;  // Расстояние до стены или препятствия, с которым враг должен столкнуться
 
     void Start()
     {
-        navMeshAgent = GetComponent<NavMeshAgent>();
-    }
+        enemyNavMeshAgent = GetComponent<NavMeshAgent>(); // Инициализация агента
 
+        // Находим игрока по тегу "Player", если переменная targetPlayer не была задана в инспекторе
+        if (targetPlayer == null)
+        {
+            GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+            if (playerObject != null)
+            {
+                targetPlayer = playerObject.transform;
+            }
+            else
+            {
+                Debug.LogError("Player not found. Please assign the player to the targetPlayer field.");
+            }
+        }
+    }
 
     void Update()
     {
-        if (player != null)
+        if (targetPlayer != null)
         {
-            navMeshAgent.SetDestination(player.position);
-        
+            // Логика движения врага
+            Vector3 targetPosition = targetPlayer.position;
+
+            if (secondEnemy != null)
+            {
+                // Проверка на расстояние до второго врага для избегания столкновений
+                float distanceToSecondEnemy = Vector3.Distance(transform.position, secondEnemy.position);
+                if (distanceToSecondEnemy < avoidanceRadius)
+                {
+                    Vector3 avoidanceDirection = transform.position - secondEnemy.position;
+                    targetPosition = targetPlayer.position + avoidanceDirection.normalized * avoidanceRadius;
+                }
+            }
+
+            // Даем агенту задание двигаться к позиции с учетом препятствий
+            NavMeshPath path = new NavMeshPath();
+            enemyNavMeshAgent.CalculatePath(targetPosition, path);
+
+            // Проверяем, есть ли путь
+            if (path.status == NavMeshPathStatus.PathComplete)
+            {
+                enemyNavMeshAgent.SetDestination(targetPosition); // Путь найден, устанавливаем конечную точку
+            }
+            else
+            {
+                // Если путь не найден (например, путь заблокирован), пытаемся найти обходной путь
+                AvoidObstacles();
+            }
+        }
+        else
+        {
+            Debug.LogError("Target Player is not assigned and not found in the scene.");
+        }
+    }
+
+    // Метод для обхода препятствий (например, стен)
+    void AvoidObstacles()
+    {
+        // Проверяем, что перед врагом есть препятствие
+        RaycastHit hit;
+        if (Physics.Raycast(transform.position, transform.forward, out hit, distanceToWall))
+        {
+            // Если препятствие перед врагом, пытаемся обойти его
+            Vector3 avoidanceDirection = Vector3.Reflect(transform.forward, hit.normal); // Используем отражение
+            Vector3 newTargetPosition = transform.position + avoidanceDirection * avoidanceRadius;
+            enemyNavMeshAgent.SetDestination(newTargetPosition); // Устанавливаем новую цель, чтобы избежать препятствия
+        }
+        else
+        {
+            // Если нет препятствий, продолжаем двигаться к игроку
+            enemyNavMeshAgent.SetDestination(targetPlayer.position);
         }
     }
 }
